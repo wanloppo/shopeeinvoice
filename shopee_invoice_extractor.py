@@ -36,6 +36,9 @@ except ImportError:
 class ShopeeInvoiceExtractor:
     """Extract and parse single Shopee invoice PDF"""
 
+    DOC_CODE = r'TRSPEMKP\d{2}-\d{5}-\d{2}'
+    OUTPUT_PREFIX = "shopee_invoice"
+
     def __init__(self, pdf_path: str, output_dir: str = None):
         self.pdf_path = Path(pdf_path)
         self.output_dir = Path(output_dir) if output_dir else self.pdf_path.parent
@@ -64,9 +67,9 @@ class ShopeeInvoiceExtractor:
     def extract_invoice_number(self) -> str:
         """Extract and merge invoice number + reference number"""
         try:
-            invoice_match = re.search(r'(TRSPEMKP\d{2}-\d{5}-\d{2})', self.text)
+            invoice_match = re.search(rf'({self.DOC_CODE})', self.text)
             date_match = re.search(r'(\d{2})/(\d{2})/(\d{4})', self.text)
-            ref_match = re.search(r'TRSPEMKP\d{2}-\d{5}-\d{2}[^\d]*(\d{4})-(\d{7})', self.text, re.DOTALL)
+            ref_match = re.search(rf'{self.DOC_CODE}[^\d]*(\d{{4}})-(\d{{7}})', self.text, re.DOTALL)
             
             if invoice_match and date_match and ref_match:
                 inv_num = invoice_match.group(1)
@@ -77,7 +80,7 @@ class ShopeeInvoiceExtractor:
                 merged = f"{inv_parts[0]}-{inv_parts[1]}-{inv_parts[2]}00000-{date_str}-{ref_num}"
                 return merged
             
-            pattern = r'(TRSPEMKP[\d\-]+)'
+            pattern = rf'({self.DOC_CODE})'
             match = re.search(pattern, self.text)
             return match.group(1) if match else ""
         except Exception as e:
@@ -169,10 +172,10 @@ class ShopeeInvoiceExtractor:
             if match:
                 totals['total_with_vat'] = float(match.group(1).replace(',', ''))
 
-            pattern = r'Fourteen Thousand.*?Baht'
+            pattern = r'\n([A-Z][A-Za-z,\- ]+?Baht)'
             match = re.search(pattern, self.text)
             if match:
-                totals['total_in_words'] = match.group(0).strip()
+                totals['total_in_words'] = match.group(1).strip()
 
             totals['currency'] = 'THB'
         except Exception as e:
@@ -200,7 +203,7 @@ class ShopeeInvoiceExtractor:
             invoice_num = data.get('invoice_number', 'unknown')
             ref_num = invoice_num.replace('[', '').replace(']', '').split('-')[-1]
             
-            filename = f"shopee_invoice_{invoice_date}_{ref_num}.json"
+            filename = f"{self.OUTPUT_PREFIX}_{invoice_date}_{ref_num}.json"
             output_path = self.output_dir / filename
             
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -257,6 +260,60 @@ class ShopeeInvoiceExtractor:
             print("─" * 70)
 
 
+class SPXReceiptExtractor(ShopeeInvoiceExtractor):
+    """Extract and parse SPX Express (Thailand) receipt PDF (no VAT, single total)"""
+
+    DOC_CODE = r'RCSPXSP[A-Z]\d{2}-\d{5}-\d{2}'
+    OUTPUT_PREFIX = "spx_receipt"
+
+    def extract_totals(self) -> Dict[str, Any]:
+        """Extract total amount from SPX receipt (no VAT breakdown)"""
+        totals = {}
+        try:
+            pattern = r'Total amount\s+([\d,]+\.?\d*)'
+            match = re.search(pattern, self.text)
+            if match:
+                totals['total_amount'] = float(match.group(1).replace(',', ''))
+
+            pattern = r'\n([A-Z][A-Za-z,\- ]+?Baht)'
+            match = re.search(pattern, self.text)
+            if match:
+                totals['total_in_words'] = match.group(1).strip()
+
+            totals['currency'] = 'THB'
+        except Exception as e:
+            print(f"⚠ Warning: Error extracting totals - {e}")
+
+        return totals
+
+    def print_result(self, success: bool, output_path: Optional[Path]) -> None:
+        """Print extraction result for SPX receipt"""
+        if success and output_path:
+            print("\n✓ Extraction successful!")
+            print(f"✓ Output: {output_path}")
+            print("\nExtracted Data:")
+            print("─" * 70)
+            print(f"  Document Type:  {self.data.get('document_type')}")
+            print(f"  Receipt Number: {self.data.get('invoice_number')}")
+            print(f"  Receipt Date:   {self.data.get('invoice_date')}")
+            print(f"  Seller ID:      {self.data.get('seller_id')}")
+            print(f"  Username:       {self.data.get('seller_username')}")
+            print(f"  Seller Name:    {self.data.get('seller_name')}")
+            print(f"  Total Amount:   ฿{self.data.get('total_amount', 0):,.2f}")
+            print("─" * 70)
+        else:
+            print("\n✗ Extraction failed!")
+            print("─" * 70)
+
+
+def create_extractor(pdf_path: str, output_dir: str = None) -> ShopeeInvoiceExtractor:
+    """Choose the extractor by filename: SPX Express-RCT* uses the SPX receipt
+    extractor, everything else uses the Shopee invoice extractor"""
+    if Path(pdf_path).name.startswith("SPX Express-RCT"):
+        return SPXReceiptExtractor(pdf_path, output_dir)
+    return ShopeeInvoiceExtractor(pdf_path, output_dir)
+
+
 def move_into(src: Path, dest_dir: Path) -> Path:
     """Move src into dest_dir, overwriting any existing file with the same name"""
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -282,7 +339,7 @@ def process_download_folder(download_folder: Path) -> Tuple[int, int]:
     failure_count = 0
 
     for pdf_file in pdf_files:
-        extractor = ShopeeInvoiceExtractor(str(pdf_file), str(processed_dir))
+        extractor = create_extractor(str(pdf_file), str(processed_dir))
         success, output_path = extractor.extract()
         extractor.print_result(success, output_path)
 
@@ -319,8 +376,8 @@ def main():
     pdf_file = sys.argv[1]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else None
 
-    # Create extractor
-    extractor = ShopeeInvoiceExtractor(pdf_file, output_dir)
+    # Create extractor (routed by filename)
+    extractor = create_extractor(pdf_file, output_dir)
 
     # Extract invoice
     success, output_path = extractor.extract()
