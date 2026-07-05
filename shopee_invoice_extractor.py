@@ -117,6 +117,28 @@ class ShopeeInvoiceExtractor:
             print(f"⚠ Warning: Error extracting seller username - {e}")
             return ""
 
+    def extract_seller_name(self) -> str:
+        """Extract seller name (invoice issuer on the first line, e.g. Shopee (Thailand) Co., Ltd.)"""
+        try:
+            for line in self.text.splitlines():
+                line = line.strip()
+                if line:
+                    return line
+            return ""
+        except Exception as e:
+            print(f"⚠ Warning: Error extracting seller name - {e}")
+            return ""
+
+    def extract_document_type(self) -> str:
+        """Extract document type from the invoice header (e.g. Receipt/Tax Invoice)"""
+        try:
+            pattern = r'(Receipt/Tax Invoice|Tax Invoice|Credit Note|Debit Note|Receipt)'
+            match = re.search(pattern, self.text)
+            return match.group(1) if match else ""
+        except Exception as e:
+            print(f"⚠ Warning: Error extracting document type - {e}")
+            return ""
+
     def extract_totals(self) -> Dict[str, Any]:
         """Extract all totals from invoice"""
         totals = {}
@@ -161,10 +183,12 @@ class ShopeeInvoiceExtractor:
     def build_json_object(self) -> Dict[str, Any]:
         """Build JSON object with extracted data"""
         data = {
+            "document_type": self.extract_document_type(),
             "invoice_number": self.extract_invoice_number(),
             "invoice_date": self.extract_invoice_date(),
             "seller_id": self.extract_seller_id(),
             "seller_username": self.extract_seller_username(),
+            "seller_name": self.extract_seller_name(),
         }
         data.update(self.extract_totals())
         return data
@@ -218,10 +242,12 @@ class ShopeeInvoiceExtractor:
             print(f"✓ Output: {output_path}")
             print("\nExtracted Data:")
             print("─" * 70)
+            print(f"  Document Type:  {self.data.get('document_type')}")
             print(f"  Invoice Number: {self.data.get('invoice_number')}")
             print(f"  Invoice Date:   {self.data.get('invoice_date')}")
             print(f"  Seller ID:      {self.data.get('seller_id')}")
             print(f"  Username:       {self.data.get('seller_username')}")
+            print(f"  Seller Name:    {self.data.get('seller_name')}")
             print(f"  Subtotal (ex-VAT): ฿{self.data.get('subtotal_before_vat', 0):,.2f}")
             print(f"  VAT (7%):       ฿{self.data.get('vat_amount', 0):,.2f}")
             print(f"  Total (inc-VAT): ฿{self.data.get('total_with_vat', 0):,.2f}")
