@@ -5,16 +5,31 @@ Extract data from a single Shopee invoice PDF and output as JSON [{ }]
 """
 
 import json
+import os
 import re
+import shutil
 import sys
 import logging
 from pathlib import Path
-from typing import Dict, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 
 try:
     from PyPDF2 import PdfReader
 except ImportError:
     print("ERROR: PyPDF2 not installed. Install with: pip install PyPDF2")
+    sys.exit(1)
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    print("ERROR: python-dotenv not installed. Install with: pip install python-dotenv")
     sys.exit(1)
 
 
@@ -216,33 +231,77 @@ class ShopeeInvoiceExtractor:
             print("─" * 70)
 
 
+def move_into(src: Path, dest_dir: Path) -> Path:
+    """Move src into dest_dir, overwriting any existing file with the same name"""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / src.name
+    if dest_path.exists():
+        dest_path.unlink()
+    shutil.move(str(src), str(dest_path))
+    return dest_path
+
+
+def process_download_folder(download_folder: Path) -> Tuple[int, int]:
+    """Process every PDF in download_folder, moving the source PDF to
+    'inserted' and the extracted JSON to 'processed'"""
+    inserted_dir = download_folder / "inserted"
+    processed_dir = download_folder / "processed"
+
+    pdf_files = sorted(download_folder.glob("*.pdf"))
+    if not pdf_files:
+        print(f"No PDF files found in {download_folder}")
+        return 0, 0
+
+    success_count = 0
+    failure_count = 0
+
+    for pdf_file in pdf_files:
+        extractor = ShopeeInvoiceExtractor(str(pdf_file), str(processed_dir))
+        success, output_path = extractor.extract()
+        extractor.print_result(success, output_path)
+
+        if success:
+            move_into(pdf_file, inserted_dir)
+            success_count += 1
+        else:
+            failure_count += 1
+
+    print(f"\n{'=' * 70}")
+    print(f"Done: {success_count} succeeded, {failure_count} failed")
+    print(f"{'=' * 70}\n")
+
+    return success_count, failure_count
+
+
 def main():
     """CLI interface"""
+    # No arguments: process every PDF in the .env DOWNLOAD_FOLDER
     if len(sys.argv) < 2:
-        print("\n" + "=" * 70)
-        print("SHOPEE INVOICE EXTRACTOR - SINGLE FILE")
-        print("=" * 70)
-        print("\nUsage:")
-        print("  python3 shopee_invoice_extractor.py <pdf_file> [output_dir]")
-        print("\nExamples:")
-        print("  python3 shopee_invoice_extractor.py invoice.pdf")
-        print("  python3 shopee_invoice_extractor.py invoice.pdf ./output")
-        print("  python3 shopee_invoice_extractor.py Shopee-TIV-TRSPEMKP00-00000-260619-0004229.pdf")
-        print("\n" + "=" * 70 + "\n")
-        sys.exit(1)
-    
+        download_folder = os.getenv("DOWNLOAD_FOLDER")
+        if not download_folder:
+            print("✗ Error: DOWNLOAD_FOLDER not set in .env")
+            sys.exit(1)
+
+        download_path = Path(download_folder)
+        if not download_path.is_dir():
+            print(f"✗ Error: DOWNLOAD_FOLDER not found - {download_path}")
+            sys.exit(1)
+
+        success_count, failure_count = process_download_folder(download_path)
+        sys.exit(0 if failure_count == 0 else 1)
+
     pdf_file = sys.argv[1]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else None
-    
+
     # Create extractor
     extractor = ShopeeInvoiceExtractor(pdf_file, output_dir)
-    
+
     # Extract invoice
     success, output_path = extractor.extract()
-    
+
     # Print result
     extractor.print_result(success, output_path)
-    
+
     # Exit with status code
     sys.exit(0 if success else 1)
 

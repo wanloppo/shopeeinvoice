@@ -9,7 +9,7 @@ pip install PyPDF2 --break-system-packages
 
 ### 2. Run
 ```bash
-python3 shopee_invoice_extractor.py invoice.pdf output_folder
+python shopee_invoice_extractor.py invoice.pdf output_folder
 ```
 
 ### 3. Done!
@@ -21,17 +21,17 @@ JSON file created at: `output_folder/shopee_invoice_YYYY-MM-DD_NNNNNNN.json`
 
 ### Basic
 ```bash
-python3 shopee_invoice_extractor.py Shopee-TIV-TRSPEMKP00-00000-260619-0004229.pdf
+python shopee_invoice_extractor.py Shopee-TIV-TRSPEMKP00-00000-260619-0004229.pdf
 ```
 
 ### With Output Folder
 ```bash
-python3 shopee_invoice_extractor.py invoice.pdf ./processed
+python shopee_invoice_extractor.py invoice.pdf ./processed
 ```
 
 ### Full Path
 ```bash
-python3 shopee_invoice_extractor.py /mnt/user-data/uploads/invoice.pdf /mnt/user-data/outputs
+python shopee_invoice_extractor.py /mnt/user-data/uploads/invoice.pdf /mnt/user-data/outputs
 ```
 
 ---
@@ -116,7 +116,7 @@ This tool only works with standard Shopee (Thailand) invoices
 
 If you need to process **multiple invoices at once**, use:
 ```bash
-python3 shopee_batch_processor.py ./invoices_folder -o ./output -w 4
+python shopee_batch_processor.py ./invoices_folder -o ./output -w 4
 ```
 
 ---
@@ -126,7 +126,7 @@ python3 shopee_batch_processor.py ./invoices_folder -o ./output -w 4
 ### Bash Loop
 ```bash
 for pdf in ./invoices/*.pdf; do
-    python3 shopee_invoice_extractor.py "$pdf" ./output
+    python shopee_invoice_extractor.py "$pdf" ./output
 done
 ```
 
@@ -134,7 +134,7 @@ done
 ```python
 import subprocess
 result = subprocess.run([
-    "python3", 
+    "python", 
     "shopee_invoice_extractor.py", 
     "invoice.pdf", 
     "./output"
@@ -160,5 +160,5 @@ That's it!
 **Ready to use?** 🚀
 
 ```bash
-python3 shopee_invoice_extractor.py your_invoice.pdf
+python shopee_invoice_extractor.py your_invoice.pdf
 ```
