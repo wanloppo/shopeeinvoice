@@ -324,11 +324,45 @@ def move_into(src: Path, dest_dir: Path) -> Path:
     return dest_path
 
 
+def build_combined_output(download_folder: Path, processed_dir: Path) -> Optional[Path]:
+    """Combine every JSON file in processed_dir into a single output.json
+    (JSON array) at download_folder"""
+    output_file = download_folder / "output.json"
+
+    combined: List[Dict[str, Any]] = []
+    for json_file in sorted(processed_dir.glob("*.json")):
+        try:
+            with open(json_file, encoding='utf-8') as f:
+                records = json.load(f)
+            if isinstance(records, list):
+                combined.extend(records)
+            else:
+                combined.append(records)
+        except Exception as e:
+            print(f"⚠ Warning: Skipping unreadable JSON {json_file.name} - {e}")
+
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(combined, f, indent=2, ensure_ascii=False)
+        print(f"✓ Combined output: {output_file} ({len(combined)} record(s))")
+        return output_file
+    except Exception as e:
+        print(f"✗ Error: Failed to write {output_file} - {e}")
+        return None
+
+
 def process_download_folder(download_folder: Path) -> Tuple[int, int]:
     """Process every PDF in download_folder, moving the source PDF to
-    'inserted' and the extracted JSON to 'processed'"""
+    'inserted' and the extracted JSON to 'processed', then combine all
+    processed JSONs into output.json at download_folder"""
     inserted_dir = download_folder / "inserted"
     processed_dir = download_folder / "processed"
+
+    # Always remove the previous combined output before processing
+    old_output = download_folder / "output.json"
+    if old_output.exists():
+        old_output.unlink()
+        print(f"Deleted old {old_output}")
 
     pdf_files = sorted(download_folder.glob("*.pdf"))
     if not pdf_files:
@@ -348,6 +382,10 @@ def process_download_folder(download_folder: Path) -> Tuple[int, int]:
             success_count += 1
         else:
             failure_count += 1
+
+    # Combine all processed JSONs into output.json at download_folder
+    if processed_dir.is_dir():
+        build_combined_output(download_folder, processed_dir)
 
     print(f"\n{'=' * 70}")
     print(f"Done: {success_count} succeeded, {failure_count} failed")
