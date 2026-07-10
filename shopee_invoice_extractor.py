@@ -364,6 +364,12 @@ def process_download_folder(download_folder: Path) -> Tuple[int, int]:
         old_output.unlink()
         print(f"Deleted old {old_output}")
 
+    # Remove all previous JSON files in the processed folder before processing
+    if processed_dir.is_dir():
+        for old_json in processed_dir.glob("*.json"):
+            old_json.unlink()
+            print(f"Deleted old {old_json}")
+
     pdf_files = sorted(download_folder.glob("*.pdf"))
     if not pdf_files:
         print(f"No PDF files found in {download_folder}")
