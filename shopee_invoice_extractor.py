@@ -263,8 +263,28 @@ class ShopeeInvoiceExtractor:
 class SPXReceiptExtractor(ShopeeInvoiceExtractor):
     """Extract and parse SPX Express (Thailand) receipt PDF (no VAT, single total)"""
 
-    DOC_CODE = r'RCSPXSP[A-Z]\d{2}-\d{5}-\d{2}'
+    DOC_CODE = r'[A-Z]{2}SPXSP[A-Z]\d{2}-\d{5}-\d{2}'
     OUTPUT_PREFIX = "spx_receipt"
+
+    def extract_customer_name(self) -> str:
+        """Extract customer name (ชื่อลูกค้า) from the receipt header"""
+        try:
+            pattern = r'Customer name\s+(.+?)\s*(?:เลขที่|\n|$)'
+            match = re.search(pattern, self.text)
+            return match.group(1).strip() if match else ""
+        except Exception as e:
+            print(f"⚠ Warning: Error extracting customer name - {e}")
+            return ""
+
+    def extract_seller_id(self) -> str:
+        """Extract Seller ID; receipts without one use '0'"""
+        seller_id = super().extract_seller_id()
+        return seller_id if seller_id else "0"
+
+    def extract_seller_username(self) -> str:
+        """Extract seller username; receipts without one use the customer name"""
+        username = super().extract_seller_username()
+        return username if username else self.extract_customer_name()
 
     def extract_totals(self) -> Dict[str, Any]:
         """Extract total amount from SPX receipt (no VAT breakdown)"""
